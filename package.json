@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "deploy": "node scripts/deploy.js",
     "test:subtitles": "node --test subtitle-parser.test.js subtitle-layout.test.js subtitle-selection.test.js word-lookup.test.js"
   },
   "devDependencies": {

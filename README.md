@@ -35,11 +35,14 @@ npm run test:subtitles  # 运行字幕相关的单元测试
 
 ## 部署
 
+在项目根目录新建 `deploy.local`，写入 scp 上传目标（例如 `user@host:paragon`）。这个文件已被 git 忽略，不会提交。也可以改用环境变量 `PARAGON_DEPLOY_TARGET`。
+
 ```bash
-npm run build
+npm run deploy               # 构建，并把 dist/ 里的内容用 scp 上传到目标目录
+npm run deploy -- --dry-run  # 只构建并打印 scp 命令，不上传
 ```
 
-把 `dist/` 里的**全部内容**上传到服务器上对应 `/paragon/` 的目录，覆盖旧的 `index.html`。`assets/` 里的文件名带内容哈希，旧文件可以保留也可以删掉。
+`assets/` 里的文件名带内容哈希，服务器上的旧文件可以保留也可以删掉。
 
 ## 说明
 
