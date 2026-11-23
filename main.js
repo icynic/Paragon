@@ -4,6 +4,7 @@ import { activeCues, nextSubtitleBoundary, parseAss, parseVtt } from './subtitle
 import { assAnchorPercent, chooseSubtitleTop, chooseTooltipPosition, scaledAssFontSize } from './subtitle-layout.js';
 import { resolveInterfaceLanguage, translate } from './i18n.js';
 import { normalizeLanguageCode, resolveLearningLanguage, selectAudioTrackId, selectBottomSubtitleId, selectTopSubtitleId } from './subtitle-selection.js';
+import { cleanWord, definitionLookupCandidates, definitionsForLanguage, lookupLanguagePair, parseMyMemoryResponse, segmentWords } from './word-lookup.js';
 
 const ffmpeg = new FFmpeg();
 let videoFile = null;
@@ -602,26 +603,24 @@ ui.languageToggle.addEventListener('click', async () => {
 // --- Word Splitting ---
 const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-const splitIntoWordSpans = (text) => {
-  return text.split('\n').map(line =>
-    escapeHtml(line).split(/\s+/).map(word =>
-      word ? `<span class="word">${word}</span>` : ''
-    ).join(' ')
-  ).join('<br>');
-};
+const trackLanguage = (track) => (track === 'bottom' ? ui.targetLang.value : ui.sourceLang.value);
+
+const splitIntoWordSpans = (text, lang) => segmentWords(text, lang).map(({ text: part, isWord }) =>
+  isWord ? `<span class="word">${escapeHtml(part)}</span>` : escapeHtml(part).replace(/\n/g, '<br>')
+).join('');
 
 // Video Sync Logic
 let lastTopSubtitleKey = '';
 let lastBottomSubtitleKey = '';
 let lastAssSubtitleKey = null;
 
-const renderPlainTrack = (element, cues, interactive, previousKey) => {
+const renderPlainTrack = (element, cues, interactive, lang, previousKey) => {
   const visible = cues.filter(cue => cue.format !== 'ass');
-  const key = `${interactive}:${visible.map(cue => `${cue.startSec}:${cue.endSec}:${cue.text}`).join('\u0001')}`;
+  const key = `${interactive}:${lang}:${visible.map(cue => `${cue.startSec}:${cue.endSec}:${cue.text}`).join('\u0001')}`;
   if (key !== previousKey) {
     element.innerHTML = visible.map(cue =>
       `<div class="subtitle-line">${interactive
-        ? splitIntoWordSpans(cue.text)
+        ? splitIntoWordSpans(cue.text, lang)
         : escapeHtml(cue.text).replace(/\n/g, '<br>')}</div>`
     ).join('');
   }
@@ -660,7 +659,7 @@ const renderAssCues = (cues) => {
   updateAssLayerBounds();
   const scaleHeight = ui.assSubtitleLayer.clientHeight;
   const key = `${scaleHeight}:${cues.map(({ cue, track, interactive }) =>
-    `${interactive}:${track}:${subtitleSize[track]}:${cue.startSec}:${cue.endSec}:${cue.layer}:${cue.alignment}:${cue.position?.x},${cue.position?.y}:${cue.text}`
+    `${interactive}:${track}:${trackLanguage(track)}:${subtitleSize[track]}:${cue.startSec}:${cue.endSec}:${cue.layer}:${cue.alignment}:${cue.position?.x},${cue.position?.y}:${cue.text}`
   ).join('\u0001')}`;
   if (key === lastAssSubtitleKey) return;
   lastAssSubtitleKey = key;
@@ -686,7 +685,7 @@ const renderAssCues = (cues) => {
     if (cue.color) line.style.color = cue.color;
     if (cue.fontFamily) line.style.fontFamily = `"${cue.fontFamily}", sans-serif`;
     line.style.zIndex = String(cue.layer);
-    if (interactive) line.innerHTML = splitIntoWordSpans(cue.text);
+    if (interactive) line.innerHTML = splitIntoWordSpans(cue.text, trackLanguage(track));
     else line.textContent = cue.text;
     group.appendChild(line);
   }
@@ -739,8 +738,8 @@ const renderSubtitles = (time) => {
   const translationTrack = ui.translationTrack.value;
   const topCues = activeCues(parsedTopSubtitle, time);
   const bottomCues = activeCues(parsedBottomSubtitle, time);
-  lastTopSubtitleKey = renderPlainTrack(ui.topSubtitle, topCues, translationTrack === 'top', lastTopSubtitleKey);
-  lastBottomSubtitleKey = renderPlainTrack(ui.bottomSubtitle, bottomCues, translationTrack === 'bottom', lastBottomSubtitleKey);
+  lastTopSubtitleKey = renderPlainTrack(ui.topSubtitle, topCues, translationTrack === 'top', trackLanguage('top'), lastTopSubtitleKey);
+  lastBottomSubtitleKey = renderPlainTrack(ui.bottomSubtitle, bottomCues, translationTrack === 'bottom', trackLanguage('bottom'), lastBottomSubtitleKey);
   renderAssCues([
     ...topCues.filter(cue => cue.format === 'ass').map(cue => ({ cue, track: 'top', interactive: translationTrack === 'top' })),
     ...bottomCues.filter(cue => cue.format === 'ass').map(cue => ({ cue, track: 'bottom', interactive: translationTrack === 'bottom' }))
@@ -987,24 +986,26 @@ document.addEventListener('fullscreenchange', () => {
 // --- Interactive Word Translation & Definition System ---
 // ============================================================
 
-// Strip punctuation from a word for cleaner lookups
-const cleanWord = (word) => word.replace(/[.,!?;:"""''„‟«»()[\]{}<>…–—\-_\/\\]/g, '').trim();
+// Words are looked up in the interactive track's language and translated into
+// the other track's language.
+const currentLookupPair = () => lookupLanguagePair(ui.translationTrack.value, ui.sourceLang.value, ui.targetLang.value);
 
 // --- MyMemory Translation API (hover) ---
-const translateWord = async (word) => {
+const translateWord = async (word, pair) => {
   const clean = cleanWord(word).toLowerCase();
-  if (!clean) return null;
-  
-  const cacheKey = `${ui.sourceLang.value}|${ui.targetLang.value}|${clean}`;
+  if (!clean || !pair) return null;
+
+  const cacheKey = `${pair.from}|${pair.to}|${clean}`;
   if (translationCache.has(cacheKey)) return translationCache.get(cacheKey);
 
   try {
     const res = await fetch(
-      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=${ui.sourceLang.value}|${ui.targetLang.value}`
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=${encodeURIComponent(pair.from)}|${encodeURIComponent(pair.to)}`
     );
-    const data = await res.json();
-    const translation = data.responseData?.translatedText || null;
-    translationCache.set(cacheKey, translation);
+    const { ok, translation } = parseMyMemoryResponse(await res.json());
+    // Only cache real answers so quota or service errors can be retried later.
+    if (ok) translationCache.set(cacheKey, translation);
+    else console.warn('Translation unavailable for', clean);
     return translation;
   } catch (err) {
     console.warn('Translation API error:', err);
@@ -1013,24 +1014,28 @@ const translateWord = async (word) => {
 };
 
 // --- Wiktionary Definition API (click) ---
-const fetchDefinition = async (word) => {
-  const clean = cleanWord(word);
-  if (!clean) return null;
+const fetchWiktionaryPage = async (title) => {
+  const res = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(title)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Wiktionary HTTP ${res.status}`);
+  return res.json();
+};
 
-  const cacheKey = `wikt|${clean}`;
+const fetchDefinition = async (word, lang) => {
+  const clean = cleanWord(word);
+  if (!clean || !lang) return null;
+
+  const cacheKey = `wikt|${lang}|${clean}`;
   if (definitionCache.has(cacheKey)) return definitionCache.get(cacheKey);
 
   try {
-    const res = await fetch(
-      `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(clean)}`
-    );
-    if (!res.ok) {
-      definitionCache.set(cacheKey, null);
-      return null;
+    let entries = null;
+    for (const title of definitionLookupCandidates(clean)) {
+      entries = definitionsForLanguage(await fetchWiktionaryPage(title), lang);
+      if (entries) break;
     }
-    const data = await res.json();
-    definitionCache.set(cacheKey, data);
-    return data;
+    definitionCache.set(cacheKey, entries);
+    return entries;
   } catch (err) {
     console.warn('Wiktionary API error:', err);
     return null;
@@ -1064,7 +1069,7 @@ const showTooltip = (wordEl) => {
   positionTooltip(wordEl);
 
   // Fetch translation
-  translateWord(word).then(translation => {
+  translateWord(word, currentLookupPair()).then(translation => {
     if (requestId !== tooltipRequestId || !wordEl.isConnected) return;
     if (translation) {
       ui.hoverTooltip.innerHTML = `<span class="tt-word">${escapeHtml(word)}</span><span class="tt-translation">${escapeHtml(translation)}</span>`;
@@ -1081,38 +1086,39 @@ const hideTooltip = () => {
 };
 
 // --- Definition Panel Logic ---
+let definitionRequestId = 0;
+
 const showDefinitionPanel = async (word) => {
   const clean = cleanWord(word);
+  if (!clean) return;
+  const requestId = ++definitionRequestId;
+  const pair = currentLookupPair();
+  const lookupLanguage = trackLanguage(ui.translationTrack.value);
   ui.defPanelContent.innerHTML = `<div class="def-word-header">${escapeHtml(clean)}</div><div class="def-translation">${escapeHtml(t('loading'))}</div>`;
   ui.definitionPanel.classList.remove('hidden');
 
-  // Get translation
-  const translation = await translateWord(word);
-  
-  // Get Wiktionary definitions
-  const wiktData = await fetchDefinition(word);
+  const [translation, entries] = await Promise.all([
+    translateWord(word, pair),
+    fetchDefinition(word, lookupLanguage)
+  ]);
+  // A newer click has replaced this lookup.
+  if (requestId !== definitionRequestId) return;
 
   let html = `<div class="def-word-header">${escapeHtml(clean)}</div>`;
   html += `<div class="def-translation">${escapeHtml(translation || t('noTranslation'))}</div>`;
 
-  if (wiktData) {
-    // Wiktionary returns data keyed by language
-    for (const [lang, entries] of Object.entries(wiktData)) {
-      if (!Array.isArray(entries)) continue;
-      for (const entry of entries) {
-        if (entry.partOfSpeech) {
-          html += `<div class="def-section-title">${escapeHtml(entry.partOfSpeech)}</div>`;
-        }
-        if (entry.definitions) {
-          for (const def of entry.definitions.slice(0, 4)) {
-            // Wiktionary definitions contain HTML, sanitize by extracting text
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = def.definition || '';
-            const defText = tempDiv.textContent || tempDiv.innerText || '';
-            if (defText) {
-              html += `<div class="def-entry">${escapeHtml(defText)}</div>`;
-            }
-          }
+  if (entries) {
+    for (const entry of entries) {
+      if (entry.partOfSpeech) {
+        html += `<div class="def-section-title">${escapeHtml(entry.partOfSpeech)}</div>`;
+      }
+      for (const def of (entry.definitions || []).slice(0, 4)) {
+        // Wiktionary definitions contain HTML, sanitize by extracting text
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = def.definition || '';
+        const defText = tempDiv.textContent.trim();
+        if (defText) {
+          html += `<div class="def-entry">${escapeHtml(defText)}</div>`;
         }
       }
     }
@@ -1128,6 +1134,11 @@ ui.defPanelClose.addEventListener('click', () => {
 });
 
 // --- Event Delegation on Subtitle Elements ---
+// Wait briefly before pausing and translating so sweeping the pointer across a
+// subtitle line does not fire a request for every word it passes.
+const HOVER_DELAY_MS = 150;
+let hoverShowTimeout = null;
+
 const handleWordHover = (e) => {
   const wordEl = e.target.closest('.word');
   if (!wordEl) return;
@@ -1135,15 +1146,18 @@ const handleWordHover = (e) => {
   // Keep the layout steady while the pointer is selecting a subtitle word.
   wordInteractionActive = true;
   clearTimeout(idleTimeout);
-
-  // Auto-pause
-  if (!ui.videoPlayer.paused) {
-    wasPlayingBeforeHover = true;
-    ui.videoPlayer.pause();
-  }
-
   clearTimeout(hoverTimeout);
-  showTooltip(wordEl);
+  clearTimeout(hoverShowTimeout);
+
+  hoverShowTimeout = setTimeout(() => {
+    if (!wordEl.isConnected || !wordEl.matches(':hover')) return;
+    // Auto-pause
+    if (!ui.videoPlayer.paused) {
+      wasPlayingBeforeHover = true;
+      ui.videoPlayer.pause();
+    }
+    showTooltip(wordEl);
+  }, HOVER_DELAY_MS);
 };
 
 const handleWordLeave = (e) => {
@@ -1151,6 +1165,7 @@ const handleWordLeave = (e) => {
   const related = e.relatedTarget;
   if (related && (related.closest('.subtitle') || related.closest('.ass-cue') || related.closest('.hover-tooltip'))) return;
 
+  clearTimeout(hoverShowTimeout);
   hoverTimeout = setTimeout(() => {
     hideTooltip();
     wordInteractionActive = false;
