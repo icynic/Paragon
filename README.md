@@ -2,6 +2,8 @@
 
 用视频学语言的浏览器小工具。选择本地视频文件（`.mkv` / `.mp4` / `.webm`），挑选音轨和上下两条字幕，就可以边看边学。
 
+在线使用：<https://effax.net/paragon/>
+
 所有视频处理都在浏览器本地完成（基于 [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm)），视频不会上传到任何服务器。
 
 ## 功能
