@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paragon</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="header-actions">
+          <div class="learning-language-control">
+            <label for="learningLanguage" data-i18n="learningLanguage">Learning language:</label>
+            <select id="learningLanguage">
+              <option value="de">German</option>
+              <option value="en">English</option>
+              <option value="fr">French</option>
+              <option value="es">Spanish</option>
+              <option value="it">Italian</option>
+              <option value="ja">Japanese</option>
+              <option value="ko">Korean</option>
+              <option value="pt">Portuguese</option>
+              <option value="ru">Russian</option>
+              <option value="nl">Dutch</option>
+              <option value="zh">Chinese</option>
+            </select>
+          </div>
+          <span id="languageStatus" class="language-status hidden" role="status"></span>
+          <button id="languageToggle" class="language-toggle" type="button" data-i18n="switchLanguage" data-i18n-title="switchLanguageTitle" data-i18n-aria-label="switchLanguageTitle">中文</button>
+        </div>
+        <h1 data-i18n="heading">Paragon - Language Learner</h1>
+        <p data-i18n="introduction">Upload a video, select your audio and dual subtitle tracks to start learning.</p>
+      </header>
+
+      <section class="upload-section" id="uploadSection">
+        <div class="file-input-wrapper">
+          <input type="file" id="mkvInput" accept=".mkv,.mp4,.webm" />
+          <label for="mkvInput" class="btn primary-btn" data-i18n="selectVideo">Select Video File</label>
+          <span id="fileNameDisplay" data-i18n="noFile">No file selected</span>
+        </div>
+        <div id="loadingStatus" class="status-message hidden" data-i18n="loadingFfmpeg">
+          Loading FFmpeg...
+        </div>
+      </section>
+
+      <section class="config-section hidden" id="configSection">
+        <div class="form-group">
+          <label for="audioTrack" data-i18n="audioTrack">Audio Track:</label>
+          <select id="audioTrack"></select>
+        </div>
+        <div class="form-group">
+          <label for="topSubtitleTrack" data-i18n="topSubtitleLabel">Top Subtitle:</label>
+          <select id="topSubtitleTrack">
+            <option value="none" data-i18n="none">None</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="bottomSubtitleTrack" data-i18n="bottomSubtitleLabel">Bottom Subtitle:</label>
+          <select id="bottomSubtitleTrack">
+            <option value="none" data-i18n="none">None</option>
+          </select>
+          <small data-i18n="bottomMatchHint">Automatically matches the interface language; you can also select it manually.</small>
+        </div>
+        <details class="subtitle-options">
+          <summary data-i18n="subtitleOptions">Subtitle Language &amp; Behavior</summary>
+          <div class="lang-pair-row">
+            <div class="form-group">
+              <label for="sourceLang" data-i18n="sourceLanguage">Subtitle Language (Top):</label>
+              <select id="sourceLang">
+                <option value="de" selected>German</option>
+                <option value="en">English</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+                <option value="it">Italian</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="pt">Portuguese</option>
+                <option value="ru">Russian</option>
+                <option value="nl">Dutch</option>
+                <option value="zh">Chinese</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="targetLang" data-i18n="targetLanguage">Translate To (Bottom):</label>
+              <select id="targetLang">
+                <option value="zh">Chinese</option>
+                <option value="en">English</option>
+                <option value="de">German</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+                <option value="it">Italian</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="pt">Portuguese</option>
+                <option value="ru">Russian</option>
+                <option value="nl">Dutch</option>
+              </select>
+            </div>
+          </div>
+          <div class="lang-pair-row">
+            <div class="form-group">
+              <label for="translationTrack" data-i18n="translationLookup">Translation &amp; Lookup:</label>
+              <select id="translationTrack">
+                <option value="top" selected>Top subtitle</option>
+                <option value="bottom">Bottom subtitle</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="navigationTrack" data-i18n="captionNavigation">Caption Navigation:</label>
+              <select id="navigationTrack">
+                <option value="top" selected>Top subtitle</option>
+                <option value="bottom">Bottom subtitle</option>
+              </select>
+            </div>
+          </div>
+        </details>
+        <button id="loadVideoBtn" class="btn primary-btn" data-i18n="loadVideo">Extract &amp; Load Video</button>
+        <div id="extractionStatus" class="status-message hidden" data-i18n="extractingSubtitles">
+          Extracting tracks... this may take a moment.
+        </div>
+      </section>
+
+      <section class="player-section hidden" id="playerSection">
+        <div class="video-container" id="videoContainer">
+          <video id="videoPlayer"></video>
+          <div class="subtitles-overlay" id="subtitlesOverlay">
+            <div id="topSubtitle" class="subtitle top-sub"></div>
+            <div id="bottomSubtitle" class="subtitle bottom-sub"></div>
+          </div>
+          <div id="assSubtitleLayer" class="ass-subtitles-layer"></div>
+          <div id="hoverTooltip" class="hover-tooltip hidden"></div>
+          <div id="definitionPanel" class="definition-panel hidden">
+            <button id="defPanelClose" class="def-close-btn" data-i18n-title="closeDefinition" data-i18n-aria-label="closeDefinition">✕</button>
+            <div id="defPanelContent"></div>
+          </div>
+          <div id="subtitleSettingsPanel" class="subtitle-settings-panel hidden" role="group" aria-label="Subtitle size settings" data-i18n-aria-label="subtitleSize">
+            <div class="settings-title" data-i18n="subtitleSize">Subtitle size</div>
+            <div class="subtitle-size-setting">
+              <label for="topSubtitleSize"><span data-i18n="topSubtitle">Top subtitle</span> <output id="topSubtitleSizeValue" for="topSubtitleSize">100%</output></label>
+              <input id="topSubtitleSize" type="range" min="50" max="150" step="5" value="100">
+            </div>
+            <div class="subtitle-size-setting">
+              <label for="bottomSubtitleSize"><span data-i18n="bottomSubtitle">Bottom subtitle</span> <output id="bottomSubtitleSizeValue" for="bottomSubtitleSize">100%</output></label>
+              <input id="bottomSubtitleSize" type="range" min="50" max="150" step="5" value="100">
+            </div>
+            <small data-i18n="subtitleSizeHint">Each slider follows its selected track, including ASS subtitles.</small>
+          </div>
+          
+          <div class="controls-panel" id="controlsPanel">
+            <div class="progress-bar-container">
+              <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1">
+            </div>
+            <div class="controls-row">
+              <div class="controls-left">
+                <button id="playPauseBtn" class="btn icon-btn" title="Play/Pause" data-i18n-title="playPause" data-i18n-aria-label="playPause">▶</button>
+                <button id="prevCaptionBtn" class="btn icon-btn" title="Previous Caption" data-i18n-title="previousCaption" data-i18n-aria-label="previousCaption">⏪</button>
+                <button id="nextCaptionBtn" class="btn icon-btn" title="Next Caption" data-i18n-title="nextCaption" data-i18n-aria-label="nextCaption">⏩</button>
+                <div class="volume-control">
+                  <span title="Volume" data-i18n-title="volume">🔊</span>
+                  <input type="range" id="volumeBar" min="0" max="1" value="1" step="0.05" data-i18n-aria-label="volume">
+                </div>
+                <div class="time-display">
+                  <span id="currentTimeDisplay">00:00</span> / <span id="durationDisplay">00:00</span>
+                </div>
+              </div>
+              
+              <div class="controls-right">
+                <div class="speed-control form-group">
+                  <select id="playbackSpeed" title="Playback Speed" data-i18n-title="playbackSpeed" data-i18n-aria-label="playbackSpeed">
+                    <option value="0.5">0.5x</option>
+                    <option value="0.75">0.75x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                  </select>
+                </div>
+                <button id="subtitleSettingsBtn" class="btn icon-btn" type="button" title="Subtitle Settings" aria-label="Subtitle Settings" data-i18n-title="subtitleSettings" data-i18n-aria-label="subtitleSettings" aria-controls="subtitleSettingsPanel" aria-expanded="false">⚙</button>
+                <button id="fullscreenBtn" class="btn icon-btn" title="Fullscreen Player" data-i18n-title="fullscreen" data-i18n-aria-label="fullscreen">⛶</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
