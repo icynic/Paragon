@@ -33,9 +33,17 @@ npm run preview         # 预览构建结果
 npm run test:subtitles  # 运行字幕相关的单元测试
 ```
 
+## 部署
+
+```bash
+npm run build
+```
+
+把 `dist/` 里的**全部内容**上传到服务器上对应 `/paragon/` 的目录，覆盖旧的 `index.html`。`assets/` 里的文件名带内容哈希，旧文件可以保留也可以删掉。
+
 ## 说明
 
-- ffmpeg.wasm 需要 `SharedArrayBuffer`，所以页面必须是跨源隔离的（COOP/COEP 响应头）。开发服务器已在 `vite.config.js` 中配置好；部署时托管平台也需要发送这两个响应头。
+- 使用的是单线程版 ffmpeg.wasm 核心，不需要 `SharedArrayBuffer`，部署时服务器不必发送 COOP/COEP 响应头（`vite.config.js` 里开发服务器配置的这两个头不是必需的）。
 - ffmpeg 核心文件运行时从 unpkg.com 加载。
 - 翻译使用 [MyMemory](https://mymemory.translated.net/) API，单词释义来自 [Wiktionary](https://en.wiktionary.org/)，查词时会把所选文本发送给这些服务。
 - `vite.config.js` 中的 `base` 设为 `/paragon/`，如果部署路径不同需要修改。
