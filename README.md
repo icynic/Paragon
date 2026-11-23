@@ -1,52 +1,54 @@
 # Paragon
 
-用视频学语言的浏览器小工具。选择本地视频文件（`.mkv` / `.mp4` / `.webm`），挑选音轨和上下两条字幕，就可以边看边学。
+English | [简体中文](README.zh-CN.md)
 
-在线使用：<https://effax.net/paragon/>
+A browser tool for learning languages with videos. Open a local video file (`.mkv` / `.mp4` / `.webm`), pick an audio track and two subtitle tracks, and learn while you watch.
 
-所有视频处理都在浏览器本地完成（基于 [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm)），视频不会上传到任何服务器。
+Try it online: <https://effax.net/paragon/>
 
-## 功能
+All video processing happens locally in your browser (powered by [ffmpeg.wasm](https://github.com/ffmpegwasm/ffmpeg.wasm)); your videos are never uploaded to a server.
 
-- 从视频中提取音轨和内嵌的文本字幕（如 SRT、ASS，ASS 会保留原样式和位置）
-- 双语字幕：上方显示学习语言，下方显示母语
-- 悬停单词查看翻译，点击查看释义
-- 上一句 / 下一句字幕跳转、播放速度调节、字幕大小调节
-- 界面支持中文和英文
+## Features
 
-## 本地运行
+- Extracts audio tracks and embedded text subtitles (e.g. SRT, ASS; ASS subtitles keep their original styling and position)
+- Dual subtitles: the language you are learning on top, your native language below
+- Hover over a word to see its translation, click it to see dictionary definitions
+- Jump to the previous / next subtitle, adjust playback speed and subtitle size
+- Interface available in English and Chinese
 
-需要 Node.js 18 或更高版本。
+## Running locally
+
+Requires Node.js 18 or later.
 
 ```bash
 npm install
 npm run dev
 ```
 
-然后在浏览器打开终端里显示的地址（默认是 `http://localhost:5173/paragon/`）。
+Then open the address shown in the terminal (by default `http://localhost:5173/paragon/`).
 
-## 其他命令
-
-```bash
-npm run build           # 构建到 dist/
-npm run preview         # 预览构建结果
-npm run test:subtitles  # 运行字幕相关的单元测试
-```
-
-## 部署
-
-在项目根目录新建 `deploy.local`，写入 scp 上传目标（例如 `user@host:paragon`）。这个文件已被 git 忽略，不会提交。也可以改用环境变量 `PARAGON_DEPLOY_TARGET`。
+## Other commands
 
 ```bash
-npm run deploy               # 构建，并把 dist/ 里的内容用 scp 上传到目标目录
-npm run deploy -- --dry-run  # 只构建并打印 scp 命令，不上传
+npm run build           # build into dist/
+npm run preview         # preview the production build
+npm run test:subtitles  # run the subtitle unit tests
 ```
 
-`assets/` 里的文件名带内容哈希，服务器上的旧文件可以保留也可以删掉。
+## Deployment
 
-## 说明
+Create a `deploy.local` file in the project root containing the scp upload target (for example `user@host:paragon`). The file is git-ignored, so it is never committed. You can also set the `PARAGON_DEPLOY_TARGET` environment variable instead.
 
-- 使用的是单线程版 ffmpeg.wasm 核心，不需要 `SharedArrayBuffer`，部署时服务器不必发送 COOP/COEP 响应头（`vite.config.js` 里开发服务器配置的这两个头不是必需的）。
-- ffmpeg 核心文件运行时从 unpkg.com 加载。
-- 翻译使用 [MyMemory](https://mymemory.translated.net/) API，单词释义来自 [Wiktionary](https://en.wiktionary.org/)，查词时会把所选文本发送给这些服务。
-- `vite.config.js` 中的 `base` 设为 `/paragon/`，如果部署路径不同需要修改。
+```bash
+npm run deploy               # build, then upload the contents of dist/ to the target with scp
+npm run deploy -- --dry-run  # build and print the scp command without uploading
+```
+
+Files in `assets/` have content hashes in their names, so old files on the server can be kept or deleted.
+
+## Notes
+
+- The app uses the single-threaded ffmpeg.wasm core, which does not need `SharedArrayBuffer`, so the server does not have to send COOP/COEP headers (the ones configured for the dev server in `vite.config.js` are not required).
+- The ffmpeg core files are loaded from unpkg.com at runtime.
+- Translations come from the [MyMemory](https://mymemory.translated.net/) API and definitions from [Wiktionary](https://en.wiktionary.org/); the words you look up are sent to these services.
+- `base` in `vite.config.js` is set to `/paragon/`; change it if you deploy under a different path.
